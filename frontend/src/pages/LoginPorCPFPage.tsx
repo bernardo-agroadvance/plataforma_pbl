@@ -2,7 +2,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { apiJson } from "../lib/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -16,8 +15,8 @@ export default function LoginPorCPFPage() {
   const navigate = useNavigate();
 
   const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, ""); // Remove tudo que não for dígito
-    setCpf(value.slice(0, 11)); // Limita a 11 dígitos
+    const value = e.target.value.replace(/\D/g, "");
+    setCpf(value.slice(0, 11));
   };
 
   const handleEntrar = async () => {
@@ -28,17 +27,29 @@ export default function LoginPorCPFPage() {
 
     setLoading(true);
     try {
-      // Faz a chamada de login para a API
-      await apiJson("/auth/cpf-login", {
-        method: "POST",
-        body: JSON.stringify({ cpf }),
-      });
+      const formData = new URLSearchParams();
+      formData.append('username', cpf);
+      formData.append('password', ''); // O campo de senha não é usado, mas é esperado pelo form
 
-      // Salva o CPF no localStorage para uso futuro na aplicação
-      localStorage.setItem("cpf", cpf);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/auth/token`, {
+        method: "POST",
+        headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formData,
+      });
+      
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Falha no login");
+      }
+      
+      localStorage.setItem("token", data.access_token);
+      localStorage.setItem("cpf", cpf); // Ainda pode ser útil para exibição
 
       toast.success("Login realizado com sucesso!");
-      navigate("/cursos"); // Redireciona para a seleção de cursos
+      navigate("/cursos");
 
     } catch (e: any) {
       toast.error(e?.message || "Falha no login. Verifique seu CPF.");

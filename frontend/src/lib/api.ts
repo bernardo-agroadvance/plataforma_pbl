@@ -3,20 +3,19 @@ const fallback = typeof window !== "undefined" ? "http://localhost:8000" : "http
 export const API_URL =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || fallback;
 
-/** fetch básico que adiciona o CPF no cabeçalho e trata a base URL */
+/** fetch básico que adiciona o Token JWT no cabeçalho e trata a base URL */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const url = `${API_URL}${path.startsWith("/") ? "" : "/"}${path}`;
 
-  // Pega o CPF salvo no momento do login
-  const cpf = localStorage.getItem('cpf');
+  const token = localStorage.getItem('token');
 
-  // Adiciona o CPF ao cabeçalho 'X-User-CPF' em todas as requisições
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string>),
     'Content-Type': 'application/json',
   };
-  if (cpf) {
-    headers['X-User-CPF'] = cpf;
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
   const resp = await fetch(url, {
@@ -24,7 +23,6 @@ export async function apiFetch(path: string, init?: RequestInit): Promise<Respon
     headers,
   });
 
-  // Se a API retornar 401, redireciona para o login
   if (resp.status === 401 && window.location.pathname !== '/') {
     localStorage.clear();
     window.location.href = '/';
@@ -42,12 +40,4 @@ export async function apiJson<T = any>(path: string, init?: RequestInit): Promis
     throw new Error(String(msg));
   }
   return data as T;
-}
-
-/** monta URL do WebSocket a partir do API_URL (ou usa VITE_WS_URL) */
-export function makeWsUrl(path = "/ws") {
-  const override = (import.meta.env.VITE_WS_URL as string | undefined)?.replace(/\/$/, "");
-  if (override) return override;
-  const base = API_URL.replace(/^http/, "ws").replace(/\/$/, "");
-  return `${base}${path.startsWith("/") ? "" : "/"}${path}`;
 }

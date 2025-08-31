@@ -1,12 +1,13 @@
 # fastapi_backend/routers/admin.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from typing import List
 from pydantic import BaseModel
 from datetime import datetime
 from ..db import get_supabase_client
 from ..liberador import forcar_liberacao_imediata
+from ..security import get_current_admin_user # Importa a dependência de segurança
 
-router = APIRouter(tags=["admin"])
+router = APIRouter(tags=["admin"], dependencies=[Depends(get_current_admin_user)]) # Protege todas as rotas deste router
 
 class LiberarReq(BaseModel):
     conteudo_id: str
