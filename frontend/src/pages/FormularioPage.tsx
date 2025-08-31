@@ -1,28 +1,15 @@
+// frontend/src/pages/FormularioPage.tsx
 import { apiFetch } from "../lib/api";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-// removed supabase import
 import toast from "react-hot-toast";
-
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-  CardFooter,
-} from "@/components/ui/card";
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Spinner } from "@/components/ui/spinner";
 
 export default function FormularioPage() {
@@ -41,8 +28,7 @@ export default function FormularioPage() {
   const navigate = useNavigate();
   const cpf = localStorage.getItem("cpf");
 
-  const preenchimento =
-    (Object.values(formData).filter(Boolean).length / Object.keys(formData).length) * 100;
+  const preenchimento = (Object.values(formData).filter(Boolean).length / Object.keys(formData).length) * 100;
 
   useEffect(() => {
     if (!cpf) navigate("/");
@@ -67,88 +53,75 @@ export default function FormularioPage() {
   };
 
   const enviarFormulario = async () => {
-console.log("🚀 Início de enviarFormulario");
-            setShowConfirmModal(false);
-            setLoading(true);
+    setShowConfirmModal(false);
+    setLoading(true);
 
-            try {
-              const payload = { ...formData, cpf, formulario_finalizado: true };
+    try {
+      const payload = { ...formData, formulario_finalizado: true };
 
-              const resUsuarios = await apiFetch(`/api/usuarios`, {
-                method: "POST",
-                body: JSON.stringify(payload),
-                headers: { "Content-Type": "application/json" },
-              });
-              const dataUsuarios = await resUsuarios.json().catch(() => ({}));
-              if (!resUsuarios.ok) {
-                console.error("🛑 Erro no /api/usuarios:", dataUsuarios);
-                toast.error("Erro ao enviar formulário.");
-                setLoading(false);
-                return;
-              }
-              console.log("✅ /api/usuarios OK:", dataUsuarios);
+      // 1. Salva os dados do formulário
+      const resUsuarios = await apiFetch(`/api/usuarios`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      if (!resUsuarios.ok) {
+        toast.error("Erro ao salvar seus dados. Tente novamente.");
+        setLoading(false);
+        return;
+      }
 
-              try {
-                const resGerar = await apiFetch(`/gerar-desafios/${cpf}`, { method: "POST" });
-                const outGerar = await resGerar.json().catch(() => ({}));
-                if (!resGerar.ok) {
-                  console.warn("⚠️ gerar-desafios retornou erro:", outGerar);
-                } else {
-                  console.log("📦 Desafios sendo gerados:", outGerar);
-                }
-              } catch (err) {
-                console.warn("ℹ️ /gerar-desafios ausente:", err);
-              } finally {
-                console.log("📡 Iniciando polling pelo backend");
-                startPolling();
-              }
+      // 2. Dispara a geração dos desafios em background
+      // ROTA ATUALIZADA
+      await apiFetch(`/api/desafios/gerar/${cpf}`, { method: "POST" });
+      
+      toast.success("Formulário enviado! Gerando seus desafios personalizados...");
+      startPolling();
 
-              toast.success("Formulário enviado com sucesso!");
-            } catch (e) {
-              console.error("❌ Erro inesperado no envio do formulário:", e);
-              toast.error("Erro inesperado no envio do formulário.");
-              setLoading(false);
-            }
-};
+    } catch (e) {
+      toast.error("Erro inesperado ao enviar o formulário.");
+      setLoading(false);
+    }
+  };
 
   const startPolling = () => {
-console.log("📡 Iniciando polling contínuo...");
-            const start = Date.now();
-            let isFetching = false;
+    const start = Date.now();
+    let isFetching = false;
+    const MAX_POLLING_TIME = 60000; // 60 segundos
 
-            const interval = setInterval(async () => {
-              if (Date.now() - start > 30000) {
-                clearInterval(interval);
-                setLoading(false);
-                toast.error("Tempo esgotado. Tente novamente.");
-                return;
-              }
+    const interval = setInterval(async () => {
+      if (Date.now() - start > MAX_POLLING_TIME) {
+        clearInterval(interval);
+        setLoading(false);
+        toast.error("A geração dos desafios está demorando mais que o esperado. Você pode fechar esta página e voltar mais tarde para a tela de desafios.", { duration: 6000 });
+        navigate("/cursos"); // Envia para uma página segura
+        return;
+      }
 
-              if (isFetching) return;
-              isFetching = true;
+      if (isFetching) return;
+      isFetching = true;
 
-              try {
-                const res = await apiFetch(`/desafios/status/${cpf}`, { method: "GET" });
-                const json = await res.json().catch(() => ({}));
-                console.log("🎯 Polling retorno:", json);
-
-                const liberado = !!(json && (json.liberado === true || json?.length > 0 || json?.data?.length > 0));
-                if (res.ok && liberado) {
-                  clearInterval(interval);
-                  setLoading(false);
-                  navigate("/desafios");
-                }
-              } catch (err) {
-                console.error("Erro no polling:", err);
-              } finally {
-                isFetching = false;
-              }
-            }, 1000);
-};
-
+      try {
+        // ROTA ATUALIZADA
+        const res = await apiFetch(`/api/desafios/status/${cpf}`);
+        const json = await res.json().catch(() => ({}));
+        
+        if (res.ok && json.liberado === true) {
+          clearInterval(interval);
+          setLoading(false);
+          toast.success("Desafios gerados com sucesso!");
+          navigate("/desafios");
+        }
+      } catch (err) {
+        console.error("Erro no polling:", err);
+      } finally {
+        isFetching = false;
+      }
+    }, 2000); // Verifica a cada 2 segundos
+  };
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-4">
+      {/* O resto do seu JSX (Card, Dialog, etc.) permanece o mesmo, não precisa mudar nada aqui. */}
       <Card className="w-full max-w-2xl shadow-xl border-2 border-agro-primary">
         <CardHeader>
           <CardTitle className="text-center text-2xl font-bold text-agro-primary">
@@ -161,7 +134,6 @@ console.log("📡 Iniciando polling contínuo...");
               Quanto mais informações você fornecer, mais personalizada será sua jornada! 🌱
             </p>
           </div>
-
           <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
             <div
               className={`h-2 transition-all duration-300 ease-in-out ${
@@ -170,14 +142,11 @@ console.log("📡 Iniciando polling contínuo...");
               style={{ width: `${preenchimento}%` }}
             />
           </div>
-
-
           <InputField label="Cargo ou função" name="cargo" value={formData.cargo} onChange={handleChange} />
           <InputField label="Região de atuação" name="regiao" value={formData.regiao} onChange={handleChange} />
           <InputField label="Cadeia de interesse no agronegócio" name="cadeia" value={formData.cadeia} onChange={handleChange} />
           <TextareaField label="Principais desafios do cotidiano" name="desafios" value={formData.desafios} onChange={handleChange} />
           <TextareaField label="Observações complementares" name="observacoes" value={formData.observacoes} onChange={handleChange} />
-
           <div className="flex items-center space-x-2">
             <Checkbox id="aceitaTermos" checked={aceitaTermos} onChange={(e) => setAceitaTermos(e.target.checked)} />
             <Label htmlFor="aceitaTermos">
@@ -192,7 +161,7 @@ console.log("📡 Iniciando polling contínuo...");
             disabled={loading || !aceitaTermos}
           >
             {loading && <Spinner className="mr-2 h-5 w-5 animate-spin" />}
-            {loading ? "Desafios sendo gerados..." : "Enviar formulário"}
+            {loading ? "Desafios sendo gerados..." : "Enviar formulário e gerar desafios"}
           </Button>
         </CardFooter>
       </Card>
@@ -230,6 +199,7 @@ console.log("📡 Iniciando polling contínuo...");
   );
 }
 
+// Funções de componente (InputField, TextareaField) não mudam
 function InputField({ label, name, value, onChange }: { label: string; name: string; value: string; onChange: (e: React.ChangeEvent<any>) => void }) {
   return (
     <div className="space-y-1">

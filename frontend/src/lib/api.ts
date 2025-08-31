@@ -3,14 +3,33 @@ const fallback = typeof window !== "undefined" ? "http://localhost:8000" : "http
 export const API_URL =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") || fallback;
 
-/** fetch básico que já envia cookies e trata base URL */
+/** fetch básico que adiciona o CPF no cabeçalho e trata a base URL */
 export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
   const url = `${API_URL}${path.startsWith("/") ? "" : "/"}${path}`;
+
+  // Pega o CPF salvo no momento do login
+  const cpf = localStorage.getItem('cpf');
+
+  // Adiciona o CPF ao cabeçalho 'X-User-CPF' em todas as requisições
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string>),
+    'Content-Type': 'application/json',
+  };
+  if (cpf) {
+    headers['X-User-CPF'] = cpf;
+  }
+
   const resp = await fetch(url, {
-    credentials: "include", // <- envia cookies HttpOnly
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
     ...init,
+    headers,
   });
+
+  // Se a API retornar 401, redireciona para o login
+  if (resp.status === 401 && window.location.pathname !== '/') {
+    localStorage.clear();
+    window.location.href = '/';
+  }
+
   return resp;
 }
 

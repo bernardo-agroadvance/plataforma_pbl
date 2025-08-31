@@ -1,18 +1,8 @@
+# fastapi_backend/avaliador.py
 import os
-from dotenv import load_dotenv
-load_dotenv()
-
-
-from supabase import create_client
-from functools import lru_cache
-
-@lru_cache
-def get_supabase():
-    return create_client(os.environ["SUPABASE_URL"], os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_API_KEY"))
-
-
 import openai
 import re
+from .db import get_supabase_client # <-- MUDANÇA AQUI
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
@@ -62,14 +52,11 @@ Sua tarefa é retornar:
         )
         resposta_modelo = completion.choices[0].message.content or ""
 
-        # Extrair nota
         nota_match = re.search(r"nota[:\-]?\s*(\d+(?:[.,]\d+)?)", resposta_modelo, re.IGNORECASE)
         nota = float(nota_match.group(1).replace(",", ".")) if nota_match else 0.0
 
-        # Remover linha da nota
         resposta_sem_nota = re.sub(r"(?i)^nota[:\-]?\s*\d+(?:[.,]\d+)?\s*", "", resposta_modelo, flags=re.MULTILINE)
 
-        # Separar resposta ideal se houver
         resposta_ideal = ""
         feedback = resposta_sem_nota.strip()
 

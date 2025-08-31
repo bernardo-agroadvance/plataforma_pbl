@@ -1,45 +1,44 @@
+# pbl_admin/app.py
 import streamlit as st
-from backend.db import get_usuarios, get_conteudos
-from backend.liberador import liberar_agendamentos_pendentes
-from supabase import Client
-from backend.db import supabase
+import requests
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 st.set_page_config(page_title="Painel PBL", layout="wide")
-st.title("📊 Painel Administrativo - Plataforma PBL")
 
+# Centraliza a URL da API
+API_URL = os.getenv("FASTAPI_API_URL", "http://localhost:8000/api/admin")
+
+def get_data_from_api(endpoint: str):
+    """Função auxiliar para buscar dados da nossa API FastAPI."""
+    try:
+        response = requests.get(f"{API_URL}/{endpoint}")
+        response.raise_for_status()  # Lança um erro para status 4xx/5xx
+        return response.json()
+    except requests.RequestException as e:
+        st.error(f"Erro ao conectar com a API: {e}")
+        return []
+
+st.title("📊 Painel Administrativo - Plataforma PBL")
 st.markdown("Bem-vindo ao painel de gestão do PBL para o Agronegócio.")
 
-# Resumo de status
+# --- Métricas do Dashboard ---
 col1, col2, col3 = st.columns(3)
 
+# Os dados agora vêm da API
+usuarios = get_data_from_api("usuarios/total") # Precisaremos criar esta rota
+conteudos = get_data_from_api("conteudos")
+agendamentos = get_data_from_api("liberacoes-historico")
+agendamentos_pendentes = [a for a in agendamentos if not a.get("liberado")]
+
 with col1:
-    usuarios = get_usuarios()
     st.metric("👥 Total de Usuários", len(usuarios))
-
 with col2:
-    conteudos = get_conteudos()
-    st.metric("📚 Total de Conteúdos", len(conteudos))
-
+    st.metric("📚 Total de Conteúdos Ativos", len(conteudos))
 with col3:
-    agendamentos_pendentes = supabase.table("PBL - liberacoes_agendadas") \
-        .select("id").eq("liberado", False).execute().data
     st.metric("⏳ Agendamentos Pendentes", len(agendamentos_pendentes))
 
 st.divider()
-
-# Ações rápidas
-st.subheader("⚙️ Ações rápidas")
-
-col4, col5 = st.columns(2)
-
-with col4:
-    if st.button("🔄 Forçar liberação de pendentes agora"):
-        liberar_agendamentos_pendentes()
-        st.success("✅ Liberações aplicadas com sucesso.")
-
-with col5:
-    st.info("💡 Use o menu lateral para navegar pelas funcionalidades:\n\n"
-            "- Agendar liberações\n"
-            "- Visualizar status dos alunos\n"
-            "- Gerenciar desafios\n"
-            "- Futuras estatísticas de desempenho")
+st.info("💡 Use o menu lateral para agendar as liberações de conteúdo para as turmas.")
