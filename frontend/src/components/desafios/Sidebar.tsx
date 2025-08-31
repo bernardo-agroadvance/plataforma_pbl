@@ -2,6 +2,7 @@
 import { Modulo } from '../../hooks/useDesafiosData';
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, TooltipPortal } from "@radix-ui/react-tooltip";
+import { useRespostas } from '../../hooks/useRespostas'; // Importa o hook
 
 interface SidebarProps {
   modulos: Modulo[];
@@ -12,8 +13,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ modulos, aulaSelecionadaId, onSelectAula, moduloAtivo, setModuloAtivo }: SidebarProps) {
-  // Simulação de status (em um caso real, isso viria de um hook de respostas)
-  const isFinalizado = (id: string) => false; // Substituir com lógica real
+  const { respostasMap } = useRespostas(); // Usa o hook para ter acesso ao status
 
   return (
     <aside className="bg-white shadow-md border-r border-gray-200 p-4 h-full w-full font-sans text-xs overflow-y-auto">
@@ -35,33 +35,38 @@ export function Sidebar({ modulos, aulaSelecionadaId, onSelectAula, moduloAtivo,
 
           {moduloAtivo === modulo.nome && (
             <ul className="w-full mt-2 space-y-1 pl-2">
-              {modulo.micros.map((aula) => (
-                <li key={aula.id}>
-                  <button
-                    onClick={() => aula.desafio_liberado && onSelectAula(aula.id)}
-                    disabled={!aula.desafio_liberado}
-                    className={`w-full flex items-center justify-between text-left text-sm px-3 py-2 rounded-md border transition-all ${
-                      aula.id === aulaSelecionadaId ? 'ring-2 ring-agro-secondary' : ''
-                    } ${!aula.desafio_liberado ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'hover:bg-yellow-100'}`}
-                  >
-                    <span className="break-words whitespace-normal leading-snug">{aula.aula}</span>
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className={`w-2.5 h-2.5 rounded-full ml-2 flex-shrink-0 ${
-                            isFinalizado(aula.id) ? "bg-green-500" : aula.desafio_liberado ? "bg-yellow-400" : "bg-gray-400"
-                          }`} />
-                        </TooltipTrigger>
-                        <TooltipPortal>
-                          <TooltipContent side="right" className="z-50 bg-black text-white px-2 py-1 rounded text-xs shadow-md">
-                            {isFinalizado(aula.id) ? "Finalizado" : aula.desafio_liberado ? "Liberado" : "Aguardando liberação"}
-                          </TooltipContent>
-                        </TooltipPortal>
-                      </Tooltip>
-                    </TooltipProvider>
-                  </button>
-                </li>
-              ))}
+              {modulo.micros.map((aula) => {
+                const respostaInfo = respostasMap.get(aula.id);
+                const finalizado = respostaInfo?.tentativa_finalizada || (respostaInfo?.tentativa || 0) >= 3;
+
+                return (
+                  <li key={aula.id}>
+                    <button
+                      onClick={() => aula.desafio_liberado && onSelectAula(aula.id)}
+                      disabled={!aula.desafio_liberado}
+                      className={`w-full flex items-center justify-between text-left text-sm px-3 py-2 rounded-md border transition-all ${
+                        aula.id === aulaSelecionadaId ? 'ring-2 ring-agro-secondary' : ''
+                      } ${!aula.desafio_liberado ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : 'hover:bg-yellow-100'}`}
+                    >
+                      <span className="break-words whitespace-normal leading-snug">{aula.aula}</span>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className={`w-2.5 h-2.5 rounded-full ml-2 flex-shrink-0 ${
+                              finalizado ? "bg-green-500" : aula.desafio_liberado ? "bg-yellow-400" : "bg-gray-400"
+                            }`} />
+                          </TooltipTrigger>
+                          <TooltipPortal>
+                            <TooltipContent side="right" className="z-50 bg-black text-white px-2 py-1 rounded text-xs shadow-md">
+                              {finalizado ? "Finalizado" : aula.desafio_liberado ? "Liberado" : "Aguardando liberação"}
+                            </TooltipContent>
+                          </TooltipPortal>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

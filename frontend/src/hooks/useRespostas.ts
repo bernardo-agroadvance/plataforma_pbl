@@ -21,7 +21,7 @@ export function useRespostas() {
   const fetchRespostas = useCallback(async () => {
     if (!cpf) return;
     try {
-      const data = await apiJson<Resposta[]>(`/api/respostas/resumo?cpf=${cpf}`);
+      const data = await apiJson<Resposta[]>(`/api/respostas/resumo`);
       const map = new Map<string, Resposta>();
       data.forEach(r => {
         // Guarda apenas a tentativa mais recente para cada desafio

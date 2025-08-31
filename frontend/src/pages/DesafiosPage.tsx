@@ -59,7 +59,10 @@ export default function DesafiosPage() {
 
         {!loading && !error && (
           <div className="space-y-6">
-            <MacroDesafioCard desafio={macroDoModuloAtivo} />
+            <MacroDesafioCard
+              desafio={macroDoModuloAtivo}
+              onSelect={() => setAulaSelecionadaId(null)} // Esta linha faz a mágica de "limpar" a seleção
+            />
 
             {desafioSelecionado ? (
               <MicroDesafioCard desafio={desafioSelecionado} />

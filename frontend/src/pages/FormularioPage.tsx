@@ -84,40 +84,41 @@ export default function FormularioPage() {
   };
 
   const startPolling = () => {
-    const start = Date.now();
-    let isFetching = false;
-    const MAX_POLLING_TIME = 60000; // 60 segundos
+  const start = Date.now();
+  let isFetching = false;
+  const MAX_POLLING_TIME = 90000; // Aumentado para 90s, caso a IA demore
 
-    const interval = setInterval(async () => {
-      if (Date.now() - start > MAX_POLLING_TIME) {
+  const interval = setInterval(async () => {
+    if (Date.now() - start > MAX_POLLING_TIME) {
+      clearInterval(interval);
+      setLoading(false);
+      toast.error("A geração dos desafios está demorando. Você pode ir para a página de desafios e atualizar em breve.", { duration: 6000 });
+      navigate("/desafios");
+      return;
+    }
+
+    if (isFetching) return;
+    isFetching = true;
+
+    try {
+      // AQUI ESTÁ A MUDANÇA:
+      // Em vez de chamar /status, chamamos a rota principal de desafios.
+      // Assim que o primeiro desafio for criado, a lista não será mais vazia.
+      const res = await apiJson<any[]>(`/api/desafios`);
+
+      if (res && res.length > 0) {
         clearInterval(interval);
         setLoading(false);
-        toast.error("A geração dos desafios está demorando mais que o esperado. Você pode fechar esta página e voltar mais tarde para a tela de desafios.", { duration: 6000 });
-        navigate("/cursos"); // Envia para uma página segura
-        return;
+        toast.success("Seus desafios foram gerados!");
+        navigate("/desafios");
       }
-
-      if (isFetching) return;
-      isFetching = true;
-
-      try {
-        // ROTA ATUALIZADA
-        const res = await apiFetch(`/api/desafios/status/${cpf}`);
-        const json = await res.json().catch(() => ({}));
-        
-        if (res.ok && json.liberado === true) {
-          clearInterval(interval);
-          setLoading(false);
-          toast.success("Desafios gerados com sucesso!");
-          navigate("/desafios");
-        }
-      } catch (err) {
-        console.error("Erro no polling:", err);
-      } finally {
-        isFetching = false;
-      }
-    }, 2000); // Verifica a cada 2 segundos
-  };
+    } catch (err) {
+      // Silencia erros durante o polling para não poluir o console
+    } finally {
+      isFetching = false;
+    }
+  }, 3000); // Verifica a cada 3 segundos
+};
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center p-4">
@@ -231,4 +232,16 @@ function TextareaField({ label, name, value, onChange }: { label: string; name: 
       />
     </div>
   );
+}
+async function apiJson<T>(url: string): Promise<T> {
+  const res = await fetch(url, {
+    credentials: "include",
+    headers: {
+      "Accept": "application/json",
+    },
+  });
+  if (!res.ok) {
+    throw new Error(`Erro ao buscar dados: ${res.statusText}`);
+  }
+  return res.json();
 }
