@@ -1,8 +1,15 @@
-
+// frontend/src/pages/AdminPage.tsx
 import { useEffect, useState } from "react";
 import DateTimePicker from "react-datetime-picker";
 import toast from "react-hot-toast";
 import { apiFetch } from "../lib/api";
+import RootLayout from "@/components/layout/RootLayout"; // 1. Importa o RootLayout
+import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
+import 'react-datetime-picker/dist/DateTimePicker.css';
+import 'react-calendar/dist/Calendar.css';
+import 'react-clock/dist/Clock.css';
 
 type Value = Date | null;
 
@@ -32,28 +39,26 @@ export default function AdminPage() {
   const [dataHora, setDataHora] = useState<Date>(new Date());
   const [historico, setHistorico] = useState<Liberacao[]>([]);
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    const fetchInicial = async () => {
-      try {
-        const r1 = await apiFetch("/api/admin/conteudos");
-        const c = await r1.json();
-        setConteudos(c);
-
-        const r2 = await apiFetch("/api/admin/turmas");
-        const t = await r2.json();
-        setTurmas(t);
-
-        await carregarHistorico();
-        setLoading(false);
-      } catch (e) {
-        console.error(e);
-        toast.error("Erro ao carregar dados iniciais");
-        setLoading(false);
-      }
-    };
-    fetchInicial();
-  }, []);
+  const fetchInicial = async () => {
+    try {
+      setLoading(true);
+      const [conteudosRes, turmasRes] = await Promise.all([
+        apiFetch("/api/admin/conteudos"),
+        apiFetch("/api/admin/turmas")
+      ]);
+      const c = await conteudosRes.json();
+      const t = await turmasRes.json();
+      setConteudos(c);
+      setTurmas(t);
+      await carregarHistorico();
+    } catch (e) {
+      toast.error("Erro ao carregar dados iniciais.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const carregarHistorico = async () => {
     try {
@@ -61,124 +66,149 @@ export default function AdminPage() {
       const data = await r.json();
       setHistorico(data ?? []);
     } catch (e) {
-      console.error(e);
-      toast.error("Erro ao carregar histórico");
+      toast.error("Erro ao carregar histórico.");
     }
   };
 
+  useEffect(() => {
+    fetchInicial();
+  }, []);
+
   const handleLiberar = async () => {
-    if (!selecMod || !selecAula || selecTurmas.length === 0) {
+    const aulaSelecionada = conteudos.find((c) => c.id === selecAula);
+    if (!selecMod || !aulaSelecionada || selecTurmas.length === 0) {
       return toast.error("Selecione módulo, aula e ao menos uma turma.");
     }
+
+    setSubmitting(true);
     try {
       const resp = await apiFetch("/api/admin/liberar", {
         method: "POST",
         body: JSON.stringify({
           conteudo_id: selecAula,
           modulo: selecMod,
-          aula: conteudos.find((c) => c.id === selecAula)?.aula || "",
+          aula: aulaSelecionada.aula,
           turmas: selecTurmas,
           data_iso: (dataHora as Date).toISOString(),
         }),
       });
       if (!resp.ok) throw new Error(await resp.text());
-      toast.success("Liberação efetuada!");
-      await carregarHistorico();
+      toast.success("Liberação efetuada com sucesso!");
+      await carregarHistorico(); // Recarrega o histórico
     } catch (e: any) {
-      console.error(e);
-      toast.error("Falha ao liberar: " + (e?.message || "erro"));
+      toast.error(`Falha ao liberar: ${e?.message || "erro"}`);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const aulasDoModulo = conteudos.filter((c) => c.modulo === selecMod);
-
-  if (loading) return <div className="p-4">Carregando...</div>;
+  const aulasDoModulo = conteudos.filter((c) => c.modulo === selecMod && c.aula);
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-6">
-      <h1 className="text-2xl font-bold">Administração • Liberação de Aulas</h1>
+    <RootLayout>
+      <div className="max-w-6xl mx-auto p-8 space-y-8">
+        <h1 className="text-3xl font-bold text-agro-primary">Painel Administrativo</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-sm font-medium mb-1">Módulo</label>
-          <select
-            className="w-full border p-2 rounded"
-            value={selecMod}
-            onChange={(e) => { setSelecMod(e.target.value); setSelecAula(""); }}
-          >
-            <option value="">-- Selecione módulo --</option>
-            {[...new Set(conteudos.map((c) => c.modulo))].map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </div>
+        {loading ? (
+          <div className="flex justify-center p-12"><Spinner /></div>
+        ) : (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle>🚀 Nova Liberação</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Módulo</label>
+                  <select
+                    className="w-full border p-2 rounded bg-gray-50"
+                    value={selecMod}
+                    onChange={(e) => { setSelecMod(e.target.value); setSelecAula(""); }}
+                  >
+                    <option value="">-- Selecione um módulo --</option>
+                    {[...new Set(conteudos.map((c) => c.modulo))].map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Aula</label>
+                  <select
+                    className="w-full border p-2 rounded bg-gray-50"
+                    value={selecAula}
+                    onChange={(e) => setSelecAula(e.target.value)}
+                    disabled={!selecMod}
+                  >
+                    <option value="">-- Selecione uma aula --</option>
+                    {aulasDoModulo.map((a) => (
+                      <option key={a.id} value={a.id}>{a.aula}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Turmas</label>
+                  <select
+                    multiple
+                    className="w-full border p-2 rounded h-32 bg-gray-50"
+                    value={selecTurmas}
+                    onChange={(e) => setSelecTurmas(Array.from(e.target.selectedOptions, opt => opt.value))}
+                  >
+                    {turmas.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Data e Hora da Liberação</label>
+                  <DateTimePicker 
+                    onChange={(v: Value) => setDataHora(v as Date)} 
+                    value={dataHora}
+                    className="w-full"
+                  />
+                </div>
+              </CardContent>
+              <CardFooter>
+                <Button onClick={handleLiberar} disabled={submitting} className="w-full h-11 bg-agro-primary text-white font-bold hover:bg-green-700">
+                  {submitting && <Spinner className="mr-2" />}
+                  Liberar Aula
+                </Button>
+              </CardFooter>
+            </Card>
 
-        <div>
-          <label className="block text-sm font-medium mb-1">Aula</label>
-          <select
-            className="w-full border p-2 rounded"
-            value={selecAula}
-            onChange={(e) => setSelecAula(e.target.value)}
-          >
-            <option value="">-- Selecione aula --</option>
-            {aulasDoModulo.map((a) => (
-              <option key={a.id} value={a.id}>{a.aula}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Turmas</label>
-          <select
-            multiple
-            className="w-full border p-2 rounded h-40"
-            value={selecTurmas}
-            onChange={(e) => setSelecTurmas(Array.from(e.target.selectedOptions, opt => opt.value))}
-          >
-            {turmas.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium mb-1">Data/Hora</label>
-          <DateTimePicker onChange={(v: Value) => setDataHora(v as Date)} value={dataHora} />
-        </div>
+            <Card className="shadow-lg">
+              <CardHeader>
+                <CardTitle>🗓️ Histórico de Liberações</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto max-h-[500px]">
+                  <table className="w-full table-auto text-sm text-left">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="p-2">Módulo</th>
+                        <th className="p-2">Aula</th>
+                        <th className="p-2">Turmas</th>
+                        <th className="p-2">Data</th>
+                        <th className="p-2">Liberado</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {historico.map((h) => (
+                        <tr key={h.id} className="border-t hover:bg-gray-50">
+                          <td className="p-2">{h.modulo}</td>
+                          <td className="p-2">{h.aula}</td>
+                          <td className="p-2">{(h.turmas || []).join(", ")}</td>
+                          <td className="p-2">{new Date(h.data_liberacao).toLocaleDateString()}</td>
+                          <td className="p-2">{h.liberado ? '✅' : '❌'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
-
-      <button
-        onClick={handleLiberar}
-        className="bg-agro-primary text-white px-6 py-2 rounded hover:bg-agro-secondary hover:text-agro-primary transition-colors"
-      >
-        🚀 Liberar!
-      </button>
-
-      <div>
-        <h3 className="text-xl font-semibold mt-8 mb-2">Histórico</h3>
-        <table className="w-full table-auto border">
-          <thead>
-            <tr className="bg-gray-100">
-              <th className="p-2">Módulo</th>
-              <th className="p-2">Aula</th>
-              <th className="p-2">Turmas</th>
-              <th className="p-2">Data</th>
-              <th className="p-2">Hora</th>
-            </tr>
-          </thead>
-          <tbody>
-            {historico.map((h) => (
-              <tr key={h.id} className="border-t">
-                <td className="p-2">{h.modulo}</td>
-                <td className="p-2">{h.aula}</td>
-                <td className="p-2">{(h.turmas || []).join(", ")}</td>
-                <td className="p-2">{h.data_liberacao}</td>
-                <td className="p-2">{h.hora_liberacao}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+    </RootLayout>
   );
 }

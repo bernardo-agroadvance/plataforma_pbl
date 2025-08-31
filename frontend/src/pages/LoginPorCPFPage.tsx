@@ -3,82 +3,87 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { apiJson } from "../lib/api";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { cn } from "@/lib/utils";
+import { Spinner } from "@/components/ui/spinner";
+import Logo from "@/assets/logo-agroadvance.png";
 
 export default function LoginPorCPFPage() {
   const [cpf, setCpf] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const validarCpf = (v: string) => /^\d{11}$/.test(v);
+  const handleCpfChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, ""); // Remove tudo que não for dígito
+    setCpf(value.slice(0, 11)); // Limita a 11 dígitos
+  };
 
   const handleEntrar = async () => {
-    const puro = (cpf || "").replace(/\D/g, "");
-    if (!validarCpf(puro)) {
-      toast.error("CPF inválido. Digite os 11 dígitos numéricos.");
+    if (cpf.length !== 11) {
+      toast.error("CPF inválido. Digite os 11 dígitos.");
       return;
     }
 
     setLoading(true);
     try {
+      // Faz a chamada de login para a API
       await apiJson("/auth/cpf-login", {
         method: "POST",
-        body: JSON.stringify({ cpf: puro }),
+        body: JSON.stringify({ cpf }),
       });
 
-      // mantém para conveniência no client
-      localStorage.setItem("cpf", puro);
+      // Salva o CPF no localStorage para uso futuro na aplicação
+      localStorage.setItem("cpf", cpf);
 
       toast.success("Login realizado com sucesso!");
-      navigate("/cursos");
+      navigate("/cursos"); // Redireciona para a seleção de cursos
+
     } catch (e: any) {
-      toast.error(e?.message || "Falha no login");
+      toast.error(e?.message || "Falha no login. Verifique seu CPF.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f7fafc] px-4">
-      <Card className="w-full max-w-md shadow-lg border border-gray-200 rounded-xl">
-        <CardHeader>
-          <CardTitle className="text-center text-2xl font-bold text-agro-primary">
-            Bem-vindo à Plataforma PBL
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4">
+      <Card className="w-full max-w-md shadow-2xl border-gray-200 rounded-2xl">
+        <CardHeader className="items-center text-center">
+          <img src={Logo} alt="Logo AgroAdvance" className="w-64 mb-4" />
+          <CardTitle className="text-2xl font-bold text-agro-primary">
+            Acesse a Plataforma PBL
           </CardTitle>
-          <p className="text-sm text-center text-gray-500 mt-1">
-            Digite seu CPF para continuar (apenas números)
-          </p>
+          <CardDescription>
+            Digite seu CPF para iniciar (apenas números).
+          </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-6">
           <div className="space-y-4">
-            <div className="space-y-1">
-              <Label htmlFor="cpf">CPF</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="cpf" className="font-semibold text-gray-700">CPF</Label>
               <Input
                 id="cpf"
                 value={cpf}
-                onChange={(e) => setCpf(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                onChange={handleCpfChange}
                 maxLength={11}
-                placeholder="Ex: 12345678900"
-                className={cn("focus-visible:ring-2 focus-visible:ring-agro-secondary focus-visible:ring-offset-2")}
+                placeholder="000.000.000-00"
+                className="h-12 text-lg text-center tracking-widest focus:ring-2 focus:ring-agro-secondary"
+                onKeyDown={(e) => e.key === 'Enter' && handleEntrar()}
               />
             </div>
 
             <Button
-              disabled={loading}
+              disabled={loading || cpf.length !== 11}
               onClick={handleEntrar}
-              className={cn(
-                "w-full bg-agro-primary hover:bg-agro-secondary text-white transition duration-200 font-semibold tracking-wide py-2",
-                loading && "opacity-70 cursor-not-allowed"
-              )}
+              className="w-full text-base py-3 rounded-lg bg-agro-primary hover:bg-green-700 text-white font-bold"
             >
+              {loading && <Spinner className="mr-2" />}
               {loading ? "Verificando..." : "Entrar"}
             </Button>
-
-            <p className="text-xs text-center text-gray-400 mt-2">
+            
+            <p className="text-xs text-center text-gray-400 pt-2">
               Em caso de dúvidas, entre em contato com o suporte da AgroAdvance.
             </p>
           </div>

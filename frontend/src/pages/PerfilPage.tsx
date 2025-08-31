@@ -3,6 +3,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 import { apiJson } from "../lib/api";
+import AppLayout from "@/components/layout/AppLayout";
+import { Card, CardContent } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 
 interface Usuario {
   nome: string;
@@ -14,14 +17,28 @@ interface Usuario {
   cadeia?: string;
   desafios?: string;
   observacoes?: string;
-  formulario_finalizado?: boolean;
 }
 
+// Componente reutilizável para exibir os campos de dados
 interface CampoProps {
   label: string;
   valor?: string | JSX.Element;
   fullWidth?: boolean;
 }
+
+function Campo({ label, valor, fullWidth }: CampoProps) {
+  return (
+    <div className={fullWidth ? "md:col-span-2" : ""}>
+      <label className="block text-sm font-semibold text-gray-500 mb-1">
+        {label}
+      </label>
+      <div className="text-base text-gray-800 bg-gray-50 p-3 rounded-md border border-gray-200 min-h-[44px] flex items-center">
+        {valor || "—"}
+      </div>
+    </div>
+  );
+}
+
 
 export default function PerfilPage() {
   const [usuario, setUsuario] = useState<Usuario | null>(null);
@@ -29,82 +46,63 @@ export default function PerfilPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    const cpf = localStorage.getItem("cpf");
-    if (!cpf) {
-      navigate("/");
-      return;
-    }
-
-    async function fetchUsuario() {
+    const fetchUsuario = async () => {
+      setLoading(true);
       try {
-        const data = await apiJson<any>(`/api/usuarios?cpf=${encodeURIComponent(cpf as string)}`);
-        const user = Array.isArray(data) ? data[0] : data;
-        if (!user) throw new Error("Usuário não encontrado");
-        if (!user.formulario_finalizado) {
-          navigate("/formulario");
-          return;
-        }
-        setUsuario(user as Usuario);
-        setLoading(false);
+        // A chamada de API agora é mais limpa, sem o CPF na URL.
+        const data = await apiJson<Usuario>(`/api/usuarios`);
+        if (!data) throw new Error("Usuário não encontrado");
+        setUsuario(data);
       } catch (e) {
         toast.error("Erro ao carregar os dados do perfil.");
-        navigate("/");
+        navigate("/cursos");
+      } finally {
+        setLoading(false);
       }
-    }
-
+    };
     fetchUsuario();
   }, [navigate]);
 
-  if (loading || !usuario) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-600">Carregando perfil...</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col items-center p-4">
-      <div className="bg-white shadow-xl rounded-xl w-full max-w-2xl p-4 sm:p-6 border border-agro-primary">
-        <div className="flex flex-col items-center mb-6 relative">
-          <h1 className="text-3xl font-bold text-agro-primary text-center">
-            Meu Perfil
-          </h1>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-          <Campo label="Nome" valor={usuario.nome} />
-          <Campo label="CPF" valor={usuario.cpf} />
-          <Campo
-            label="Curso"
-            valor={
-              <span className="bg-agro-secondary/30 text-agro-primary px-2 py-1 rounded-full inline-block">
-                {usuario.curso}
-              </span>
-            }
-          />
-          <Campo label="Turma" valor={usuario.turma} />
-
-          {usuario.cargo && <Campo label="Cargo" valor={usuario.cargo} />}
-          {usuario.regiao && <Campo label="Região" valor={usuario.regiao} />}
-          {usuario.cadeia && <Campo label="Cadeia" valor={usuario.cadeia} />}
-          {usuario.desafios && <Campo label="Desafios" valor={usuario.desafios} />}
-          {usuario.observacoes && <Campo label="Observações" valor={usuario.observacoes} fullWidth />}
-        </div>
+    <AppLayout>
+      <div className="max-w-4xl mx-auto py-8">
+        <h1 className="text-3xl font-bold text-agro-primary mb-6">
+          Meu Perfil
+        </h1>
+        
+        {loading ? (
+          <div className="flex justify-center items-center p-12">
+            <Spinner className="w-8 h-8 text-agro-primary" />
+          </div>
+        ) : !usuario ? (
+          <Card className="shadow-lg border-gray-200 p-6 text-center text-red-600">
+            Não foi possível carregar os dados do usuário.
+          </Card>
+        ) : (
+          <Card className="shadow-lg border-gray-200">
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6">
+                <Campo label="Nome" valor={usuario.nome} />
+                <Campo label="CPF" valor={usuario.cpf} />
+                <Campo
+                  label="Curso"
+                  valor={
+                    <span className="bg-agro-secondary/20 text-green-800 font-medium px-3 py-1 rounded-full text-sm">
+                      {usuario.curso}
+                    </span>
+                  }
+                />
+                <Campo label="Turma" valor={usuario.turma} />
+                <Campo label="Cargo ou função" valor={usuario.cargo} />
+                <Campo label="Região de atuação" valor={usuario.regiao} />
+                <Campo label="Cadeia de interesse" valor={usuario.cadeia} />
+                <Campo label="Principais desafios" valor={usuario.desafios} />
+                <Campo label="Observações" valor={usuario.observacoes} fullWidth />
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
-    </div>
-  );
-}
-
-function Campo({ label, valor, fullWidth }: CampoProps) {
-  return (
-    <div className={fullWidth ? "md:col-span-2" : ""}>
-      <label className="block text-agro-primary font-semibold text-sm mb-1">
-        {label}
-      </label>
-      <p className="text-gray-700 bg-gray-50 p-2 rounded border border-gray-200 text-sm">
-        {valor || "—"}
-      </p>
-    </div>
+    </AppLayout>
   );
 }
