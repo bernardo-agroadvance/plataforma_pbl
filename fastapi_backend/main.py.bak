@@ -1,0 +1,194 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()  # precisa estar antes de "from gerar_desafios import ..."
+
+
+from fastapi import WebSocket, WebSocketDisconnect
+from typing import List, Set
+# fastapi_backend/main.py
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from gerar_desafios import gerar_todos_os_desafios
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from avaliador import avaliar_resposta_com_ia
+from gerar_desafios import supabase
+from fastapi import Request
+from datetime import datetime
+from uuid import uuid4
+from fastapi import Body
+import asyncio
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+
+
+app = FastAPI()
+
+# Permitir requisições de outros domínios (React por exemplo)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "*").split(","),
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+class AvaliacaoRequest(BaseModel):
+    cpf: str
+    desafio_id: str
+    resposta: str
+    tentativa: int
+
+class FinalizacaoRequest(BaseModel):
+    cpf: str
+    desafio_id: str
+    tentativa: int
+
+active_connections = []
+
+@app.get("/")
+def home():
+    return {"mensagem": "API de geração de desafios está online ✅"}
+
+@app.post("/gerar-desafios/{cpf}")
+def gerar_desafios(cpf: str, background_tasks: BackgroundTasks):
+    background_tasks.add_task(gerar_todos_os_desafios, cpf)
+    return {"status": "agendado", "mensagem": "Processo iniciado com sucesso."}
+
+@app.post("/avaliador")
+def avaliar_resposta(payload: AvaliacaoRequest):
+    # Buscar o texto original do microdesafio
+    desafio = supabase.table("PBL - desafios").select("texto_desafio").eq("id", payload.desafio_id).single().execute().data
+    if not desafio:
+        raise HTTPException(status_code=404, detail="Desafio não encontrado.")
+
+    texto = desafio["texto_desafio"]
+    nota, feedback, sugestao = avaliar_resposta_com_ia(payload.resposta, texto, payload.tentativa)
+
+    return {
+        "nota": nota,
+        "feedback": feedback,
+        "sugestao": sugestao
+    }
+
+@app.post("/registrar-resposta")
+def registrar_resposta(payload: AvaliacaoRequest):
+    try:
+        # Buscar o texto original do desafio
+        desafio = supabase.table("PBL - desafios").select("texto_desafio, conteudo_id").eq("id", payload.desafio_id).single().execute().data
+        if not desafio:
+            raise HTTPException(status_code=404, detail="Desafio não encontrado.")
+
+        texto = desafio["texto_desafio"]
+        conteudo_id = desafio["conteudo_id"]
+
+        nota, feedback, sugestao = avaliar_resposta_com_ia(payload.resposta, texto, payload.tentativa)
+
+        # Gerar UUID único para a tentativa
+        resposta_id = str(uuid4())
+
+        # Inserir nova tentativa na tabela PBL - respostas
+        supabase.table("PBL - respostas").insert({
+            "id": resposta_id,
+            "cpf": payload.cpf,
+            "desafio_id": payload.desafio_id,
+            "conteudo_id": conteudo_id,
+            "tentativa": payload.tentativa,
+            "texto_resposta": payload.resposta,
+            "nota": nota,
+            "feedback": feedback,
+            "resposta_ideal": sugestao,
+            "data_envio": datetime.utcnow().isoformat(),
+            "tentativa_finalizada": payload.tentativa == 3
+        }).execute()
+
+        return {
+            "nota": nota,
+            "feedback": feedback,
+            "sugestao": sugestao
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@app.post("/finalizar-resposta")
+def finalizar_resposta(payload: FinalizacaoRequest):
+    try:
+        # Buscar a tentativa atual
+        resposta = supabase.table("PBL - respostas") \
+            .select("id, texto_resposta, desafio_id") \
+            .eq("cpf", payload.cpf) \
+            .eq("desafio_id", payload.desafio_id) \
+            .eq("tentativa", payload.tentativa) \
+            .single() \
+            .execute()
+
+        if not resposta.data:
+            raise HTTPException(status_code=404, detail="Tentativa não encontrada.")
+
+        resposta_id = resposta.data["id"]
+        texto_resposta = resposta.data["texto_resposta"]
+
+        # Buscar o texto do microdesafio
+        desafio = supabase.table("PBL - desafios") \
+            .select("texto_desafio") \
+            .eq("id", payload.desafio_id) \
+            .single() \
+            .execute()
+
+        if not desafio.data:
+            raise HTTPException(status_code=404, detail="Desafio não encontrado.")
+
+        texto_desafio = desafio.data["texto_desafio"]
+
+        # Avaliar novamente para gerar a resposta ideal (somente)
+        _, _, sugestao = avaliar_resposta_com_ia(texto_resposta, texto_desafio, tentativa=3)
+
+        # Atualizar apenas os campos necessários
+        supabase.table("PBL - respostas") \
+            .update({
+                "resposta_ideal": sugestao,
+                "tentativa_finalizada": True
+            }) \
+            .eq("id", resposta_id) \
+            .execute()
+
+        return {"status": "sucesso", "mensagem": "Resposta marcada como definitiva."}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# --- WebSocket manager (broadcast simples) ---
+class ConnectionManager:
+    def __init__(self):
+        self.active: Set[WebSocket] = set()
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active.add(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        if websocket in self.active:
+            self.active.remove(websocket)
+
+    async def broadcast(self, message: str):
+        for ws in list(self.active):
+            try:
+                await ws.send_text(message)
+            except Exception:
+                self.disconnect(ws)
+
+manager = ConnectionManager()
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_text()
+            # Echo + heartbeat semantics
+            if data.strip().lower() == "ping":
+                await websocket.send_text("pong")
+            else:
+                await manager.broadcast(data)
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
